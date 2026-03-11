@@ -6,6 +6,8 @@ export interface ParsedRow {
   first_name?: string
   last_name?: string
   company?: string
+  subjectOverride?: string
+  bodyOverride?: string
   [key: string]: string | undefined
 }
 
@@ -17,6 +19,7 @@ export interface ParseResult {
   duplicates: string[]
   invalidEmails: string[]
   totalRaw: number
+  hasPerRowContent: boolean
 }
 
 export interface ColumnMapping {
@@ -24,6 +27,8 @@ export interface ColumnMapping {
   first_name?: string
   last_name?: string
   company?: string
+  subject?: string
+  body?: string
   [key: string]: string | undefined
 }
 
@@ -49,6 +54,12 @@ export function autoDetectMapping(headers: string[]): ColumnMapping {
   for (const c of ['company', 'company name', 'organization', 'org', 'employer']) {
     const i = hl.indexOf(c); if (i !== -1) { mapping.company = headers[i]; break }
   }
+  for (const c of ['subject', 'subject line', 'email subject', 'email_subject']) {
+    const i = hl.indexOf(c); if (i !== -1) { mapping.subject = headers[i]; break }
+  }
+  for (const c of ['email body', 'body', 'email_body', 'message body', 'message', 'content', 'email content']) {
+    const i = hl.indexOf(c); if (i !== -1) { mapping.body = headers[i]; break }
+  }
   return mapping
 }
 
@@ -59,6 +70,8 @@ function applyMapping(rawRows: Record<string, string>[], mapping: ColumnMapping)
     if (mapping.first_name) mapped.first_name = row[mapping.first_name]?.trim()
     if (mapping.last_name) mapped.last_name = row[mapping.last_name]?.trim()
     if (mapping.company) mapped.company = row[mapping.company]?.trim()
+    if (mapping.subject) mapped.subjectOverride = row[mapping.subject]?.trim()
+    if (mapping.body) mapped.bodyOverride = row[mapping.body]?.trim()
     for (const [key, value] of Object.entries(row)) {
       if (!mappedValues.has(key)) {
         const nk = key.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
@@ -88,7 +101,8 @@ function validateAndClean(rows: ParsedRow[], headers: string[], existingErrors: 
 
   if (invalidEmails.length > 0) warnings.push(`${invalidEmails.length} invalid email(s) removed`)
   if (duplicates.length > 0) warnings.push(`${duplicates.length} duplicate(s) removed`)
-  return { rows: cleanRows, headers, errors, warnings, duplicates, invalidEmails, totalRaw }
+  const hasPerRowContent = cleanRows.some(r => r.subjectOverride || r.bodyOverride)
+  return { rows: cleanRows, headers, errors, warnings, duplicates, invalidEmails, totalRaw, hasPerRowContent }
 }
 
 export function parseCSV(content: string, mapping?: ColumnMapping): ParseResult {
@@ -100,7 +114,7 @@ export function parseCSV(content: string, mapping?: ColumnMapping): ParseResult 
   const errors: string[] = result.errors.map(e => e.message)
   const autoMapping = mapping || autoDetectMapping(headers)
   if (!autoMapping.email) {
-    return { rows: [], headers, errors: [...errors, 'Could not detect email column. Map it manually.'], warnings: [], duplicates: [], invalidEmails: [], totalRaw: 0 }
+    return { rows: [], headers, errors: [...errors, 'Could not detect email column. Map it manually.'], warnings: [], duplicates: [], invalidEmails: [], totalRaw: 0, hasPerRowContent: false }
   }
   const rows = applyMapping(result.data, autoMapping)
   return validateAndClean(rows, headers, errors)
@@ -113,7 +127,7 @@ export function parseXLSX(buffer: ArrayBuffer, mapping?: ColumnMapping): ParseRe
   const headers = rawData.length > 0 ? Object.keys(rawData[0]) : []
   const autoMapping = mapping || autoDetectMapping(headers)
   if (!autoMapping.email) {
-    return { rows: [], headers, errors: ['Could not detect email column. Map it manually.'], warnings: [], duplicates: [], invalidEmails: [], totalRaw: 0 }
+    return { rows: [], headers, errors: ['Could not detect email column. Map it manually.'], warnings: [], duplicates: [], invalidEmails: [], totalRaw: 0, hasPerRowContent: false }
   }
   const rows = applyMapping(rawData, autoMapping)
   return validateAndClean(rows, headers, [])

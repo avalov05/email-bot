@@ -103,7 +103,10 @@ async function processCampaign(
     const customFields = recipient.customFields ? JSON.parse(recipient.customFields) : {}
     const recipientData = { email: recipient.email, first_name: recipient.firstName || '', last_name: recipient.lastName || '', company: recipient.company || '', ...customFields }
     const footer = campaign.includeFooter ? (campaign.footerText || '') : undefined
-    const { subject, body } = renderEmail(campaign.subjectTemplate, campaign.bodyTemplate, recipientData, footer)
+    // Use per-row content if present, fall back to campaign template
+    const subjectTemplate = recipient.subjectOverride || campaign.subjectTemplate
+    const bodyTemplate = recipient.bodyOverride || campaign.bodyTemplate
+    const { subject, body } = renderEmail(subjectTemplate, bodyTemplate, recipientData, footer)
 
     let success = false, lastError = ''
     for (let attempt = 1; attempt <= campaign.maxRetries; attempt++) {
@@ -112,18 +115,18 @@ async function processCampaign(
         await db.update(recipients).set({ status: 'sending', updatedAt: Date.now() }).where(eq(recipients.id, recipient.id))
         if (campaign.sendMode === 'dry_run') {
           await sleep(50)
-          await db.update(recipients).set({ status: 'sent', sentAt: Date.now(), updatedAt: Date.now() }).where(eq(recipients.id, recipient.id))
+          await db.update(recipients).set({ status: 'sent', sentAt: Date.now(), sentSubject: subject, sentBody: body, updatedAt: Date.now() }).where(eq(recipients.id, recipient.id))
           await recordAttempt(recipient.id, jobId, attempt, 'success', { dry_run: true })
           sentCount++; success = true; break
         } else if (campaign.sendMode === 'draft') {
           const r = await provider.createDraft({ to: recipient.email, subject, body })
-          await db.update(recipients).set({ status: 'draft_created', draftId: r.id, updatedAt: Date.now() }).where(eq(recipients.id, recipient.id))
+          await db.update(recipients).set({ status: 'draft_created', draftId: r.id, sentSubject: subject, sentBody: body, updatedAt: Date.now() }).where(eq(recipients.id, recipient.id))
           await recordAttempt(recipient.id, jobId, attempt, 'draft_created', r)
           await audit('send.draft_created', { entityType: 'recipient', entityId: recipient.id })
           draftCount++; success = true; break
         } else {
           const r = await provider.sendEmail({ to: recipient.email, subject, body })
-          await db.update(recipients).set({ status: 'sent', messageId: r.id, sentAt: Date.now(), updatedAt: Date.now() }).where(eq(recipients.id, recipient.id))
+          await db.update(recipients).set({ status: 'sent', messageId: r.id, sentAt: Date.now(), sentSubject: subject, sentBody: body, updatedAt: Date.now() }).where(eq(recipients.id, recipient.id))
           await recordAttempt(recipient.id, jobId, attempt, 'success', r)
           await audit('send.sent', { entityType: 'recipient', entityId: recipient.id })
           sentCount++; success = true; break
@@ -150,7 +153,8 @@ async function processCampaign(
 
     await db.update(sendJobs).set({ sentCount, draftCount, failedCount, skippedCount, currentIndex: i + 1, updatedAt: Date.now() }).where(eq(sendJobs.id, jobId))
 
-    if (i < pending.length - 1 && state.status !== 'stopped') {
+    const curStatus: string = state.status
+    if (i < pending.length - 1 && curStatus !== 'stopped') {
       await sleep(campaign.throttleMs + Math.random() * campaign.throttleMs * 0.3)
     }
   }

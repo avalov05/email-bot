@@ -53,13 +53,25 @@ export async function runMigrations() {
       id TEXT PRIMARY KEY, action TEXT NOT NULL, entity_type TEXT,
       entity_id TEXT, details TEXT, timestamp INTEGER NOT NULL
     )`,
+    // Add per-row override columns to existing databases (safe to run multiple times)
+    `ALTER TABLE recipients ADD COLUMN subject_override TEXT`,
+    `ALTER TABLE recipients ADD COLUMN body_override TEXT`,
+    `ALTER TABLE recipients ADD COLUMN sent_subject TEXT`,
+    `ALTER TABLE recipients ADD COLUMN sent_body TEXT`,
     `CREATE INDEX IF NOT EXISTS idx_recipients_campaign ON recipients(campaign_id)`,
     `CREATE INDEX IF NOT EXISTS idx_recipients_email ON recipients(email)`,
     `CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp)`,
   ]
 
   for (const sql of statements) {
-    await client.execute(sql)
+    try {
+      await client.execute(sql)
+    } catch (e) {
+      // Ignore errors from ALTER TABLE when columns already exist
+      const msg = (e instanceof Error ? e.message : String(e)).toLowerCase()
+      const isColumnExists = msg.includes('duplicate column name') || msg.includes('already has a column named') || msg.includes('already exists')
+      if (!isColumnExists) throw e
+    }
   }
   client.close()
 }

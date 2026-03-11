@@ -32,7 +32,7 @@ export class MicrosoftAdapter implements ProviderAdapter {
     if (!res.ok) throw new Error('Failed to refresh Microsoft token')
     const data = await res.json()
     const now = Date.now()
-    const u = { accessToken: data.access_token, refreshToken: data.refresh_token || this.account.refreshToken, expiresAt: now + data.expires_in * 1000, updatedAt: now }
+    const u = { accessToken: (data as Record<string,string>).access_token, refreshToken: (data as Record<string,string>).refresh_token || this.account.refreshToken, expiresAt: now + (data as Record<string,number>).expires_in * 1000, updatedAt: now }
     await db.update(accounts).set(u).where(eq(accounts.id, this.account.id))
     this.account = { ...this.account, ...u }
     this.client = this.makeClient(this.account.accessToken)

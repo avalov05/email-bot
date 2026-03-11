@@ -3,15 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "tui": "NODE_TLS_REJECT_UNAUTHORIZED=0 tsx --tsconfig tsconfig.tui.json src/tui/index.tsx",
+    "start": "npm run tui",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "lint": "tsc --noEmit --project tsconfig.tui.json 2>&1 | head -30"
   },
   "dependencies": {
     "@azure/identity": "^4.13.0",
     "@googleapis/gmail": "^16.1.1",
     "@hookform/resolvers": "^5.2.2",
+    "@inkjs/ui": "^2.0.0",
     "@libsql/client": "^0.17.0",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@prisma/client": "^6.19.2",
@@ -72,6 +73,8 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
-  }
+  },
+  "type": "module"
 }
